@@ -37,6 +37,8 @@ static const char rcsid[] = "$Id: rlm_detail.c,v 1.37.2.1.2.2 2006/07/05 17:08:3
 #include	"modules.h"
 #define 	DIRLEN	8192
 
+#include <syslog.h>                             // syslog
+
 static const char *packet_codes[] = {
   "",
   "Access-Request",
@@ -182,6 +184,20 @@ static int detail_instantiate(CONF_SECTION *conf, void **instance)
 	return 0;
 }
 
+static void syslog_add(char *aBuf, VALUE_PAIR *aPair) {
+    char    buf[1024];
+    vp_prints(buf, sizeof(buf), aPair);
+    
+
+    if(strlen(aBuf)!=0) {
+        strcat(aBuf, ", ");
+    }   
+    
+    if( strlen(aBuf) + strlen(buf) < 2047 ) {
+        strcat(aBuf, buf);
+    }
+}
+
 /*
  *	Do detail, compatible with old accounting
  */
@@ -199,8 +215,11 @@ static int do_detail(void *instance, REQUEST *request, RADIUS_PACKET *packet,
 	REALM		*proxy_realm;
 	char		proxy_buffer[16];
 	VALUE_PAIR	*pair = packet->vps;
+	char            syslog_buf[2048];
 
 	struct detail_instance *inst = instance;
+
+	syslog_buf [0] = 0 ;
 
 	/*
 	 *	Nothing to log: don't do anything.
@@ -367,8 +386,13 @@ static int do_detail(void *instance, REQUEST *request, RADIUS_PACKET *packet,
 		 */
 		fputs("\t", outfp);
 		vp_print(outfp, pair);
+		syslog_add(syslog_buf, pair);
 		fputs("\n", outfp);
 	}
+	
+	openlog("radius_audit:", LOG_PID|LOG_CONS, LOG_USER);
+	syslog(LOG_ALERT, "%s", syslog_buf);
+	closelog();
 
 	/*
 	 *	Add non-protocol attibutes.
@@ -411,6 +435,7 @@ static int do_detail(void *instance, REQUEST *request, RADIUS_PACKET *packet,
 	 */
 	return RLM_MODULE_OK;
 }
+
 
 /*
  *	Accounting - write the detail files.
